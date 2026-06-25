@@ -1,11 +1,24 @@
 {
-  "version": 2,
-  "builds": [
-    { "src": "api/proxy.js", "use": "@vercel/node" },
-    { "src": "index.html", "use": "@vercel/static" }
+  "rewrites": [
+    {
+      "source": "/api/pools",
+      "destination": "https://yields.llama.fi/pools"
+    },
+    {
+      "source": "/api/chart/:id",
+      "destination": "https://yields.llama.fi/chart/:id"
+    },
+    {
+      "source": "/api/chains",
+      "destination": "https://api.llama.fi/v2/chains"
+    }
   ],
-  "routes": [
-    { "src": "/api/(.*)", "dest": "/api/proxy.js" },
-    { "src": "/(.*)", "dest": "/index.html" }
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" }
+      ]
+    }
   ]
 }
