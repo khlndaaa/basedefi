@@ -1132,6 +1132,28 @@ function runOptimizer() {
 var swapQuoteTimer = null;
 var swapRates = { ETH:3500, USDC:1, WETH:3500, AERO:1.2 };
 
+// Token addresses on Base
+var TOKEN_ADDRS = {
+  "ETH":  "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+  "USDC": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+  "WETH": "0x4200000000000000000000000000000000000006",
+  "AERO": "0x940181a94A35A4569E4529A3CDfB74e38FD98631",
+  "CBBTC":"0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf"
+};
+
+var TOKEN_DECIMALS = { "ETH":18, "USDC":6, "WETH":18, "AERO":18, "CBBTC":8 };
+
+// YOUR affiliate wallet — отримуєш 0.15% від кожного свапу
+var AFFILIATE_WALLET = "0xdf1496a7d0fe0fe557d41d2d5ea7e64ac15d032e";
+var AFFILIATE_FEE = "15"; // 0.15% in basis points
+
+// Base Builder Code — для отримання атрибуції і винагород
+var BUILDER_CODE = "bc_xxmfe93e";
+var BUILDER_CODE_HEX = "0x" + Array.from("bc_xxmfe93e").map(c => c.charCodeAt(0).toString(16).padStart(2,"0")).join("");
+
+var swapQuoteTimer = null;
+var currentQuote = null;
+
 function swapTokens() {
   var inSel = document.getElementById("swapTokenIn");
   var outSel = document.getElementById("swapTokenOut");
@@ -1147,35 +1169,149 @@ function getSwapQuote() {
     var amtIn = parseFloat(document.getElementById("swapAmountIn").value)||0;
     var tokenIn = document.getElementById("swapTokenIn").value;
     var tokenOut = document.getElementById("swapTokenOut").value;
+    var outEl = document.getElementById("swapAmountOut");
+    var info = document.getElementById("swapInfo");
+    var btn = document.getElementById("swapBtn");
+
     if (amtIn <= 0 || tokenIn === tokenOut) {
-      document.getElementById("swapAmountOut").value = "";
-      document.getElementById("swapInfo").classList.remove("show");
+      outEl.value = "";
+      info.classList.remove("show");
       return;
     }
-    var valueIn = amtIn * (swapRates[tokenIn]||1);
-    var amtOut = valueIn / (swapRates[tokenOut]||1);
-    var slippage = 0.3;
-    var amtOutMin = amtOut * (1 - slippage/100);
-    document.getElementById("swapAmountOut").value = amtOut.toFixed(6);
-    var info = document.getElementById("swapInfo");
-    info.innerHTML = "Rate: 1 "+tokenIn+" = "+(swapRates[tokenIn]/swapRates[tokenOut]).toFixed(4)+" "+tokenOut+
-      " &nbsp;|&nbsp; Slippage: "+slippage+"%" +
-      " &nbsp;|&nbsp; Min received: "+amtOutMin.toFixed(6)+" "+tokenOut+
-      " &nbsp;|&nbsp; Route: Aerodrome DEX";
-    info.classList.add("show");
-  }, 300);
+
+    outEl.value = "Loading...";
+    var decimals = TOKEN_DECIMALS[tokenIn] || 18;
+    var sellAmount = Math.floor(amtIn * Math.pow(10, decimals)).toString();
+    var sellToken = TOKEN_ADDRS[tokenIn];
+    var buyToken = TOKEN_ADDRS[tokenOut];
+
+    // 0x API v2 with affiliate fee
+    var url = "https://api.0x.org/swap/permit2/price" +
+      "?chainId=8453" +
+      "&sellToken=" + sellToken +
+      "&buyToken=" + buyToken +
+      "&sellAmount=" + sellAmount +
+      "&affiliateAddress=" + AFFILIATE_WALLET +
+      "&affiliateFee=" + AFFILIATE_FEE +
+      "&taker=" + (window._walletAddr || "0x0000000000000000000000000000000000000000");
+
+    fetch(url, {
+      headers: {
+        "0x-api-key": "2a71d5e4-f7cc-4345-be30-72b8400cc5b2",
+        "0x-version": "v2"
+      }
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.buyAmount) {
+        var buyDecimals = TOKEN_DECIMALS[tokenOut] || 18;
+        var buyAmt = (parseInt(data.buyAmount) / Math.pow(10, buyDecimals)).toFixed(6);
+        outEl.value = buyAmt;
+        currentQuote = data;
+
+        var affiliateFeeAmt = (amtIn * 0.0015).toFixed(4);
+        info.innerHTML =
+          "Route: " + (data.sources ? data.sources.filter(function(s){return parseFloat(s.proportion)>0;}).map(function(s){return s.name;}).join(", ") : "0x Protocol") +
+          " &nbsp;|&nbsp; You receive: " + buyAmt + " " + tokenOut +
+          " &nbsp;|&nbsp; <span style='color:#00c48c'>Fee: " + affiliateFeeAmt + " " + tokenIn + " (0.15%)</span>";
+        info.classList.add("show");
+
+        if (window._walletAddr) {
+          btn.disabled = false;
+          btn.textContent = "Swap " + tokenIn + " → " + tokenOut;
+        }
+      } else {
+        outEl.value = "N/A";
+        info.innerHTML = data.reason || "Could not get quote";
+        info.classList.add("show");
+      }
+    })
+    .catch(function() {
+      // Fallback to simple rate estimate
+      var rates = {"ETH":3500,"USDC":1,"WETH":3500,"AERO":1.2,"CBBTC":105000};
+      var valueIn = amtIn * (rates[tokenIn]||1);
+      var amtOut = valueIn / (rates[tokenOut]||1);
+      outEl.value = amtOut.toFixed(6);
+      info.innerHTML = "Estimated rate (0x unavailable) &nbsp;|&nbsp; <span style='color:#00c48c'>0.15% fee supports this dashboard</span>";
+      info.classList.add("show");
+    });
+  }, 500);
 }
 
-function executeSwap() {
+async function executeSwap() {
   if (!window._walletAddr) { openWalletModal(); return; }
   var amtIn = parseFloat(document.getElementById("swapAmountIn").value)||0;
   var tokenIn = document.getElementById("swapTokenIn").value;
   var tokenOut = document.getElementById("swapTokenOut").value;
-  if (amtIn <= 0) { alert("Enter amount to swap"); return; }
+
+  if (amtIn <= 0) { alert("Enter amount"); return; }
   if (tokenIn === tokenOut) { alert("Select different tokens"); return; }
-  // Redirect to Aerodrome with pre-filled swap
-  var url = "https://aerodrome.finance/swap?from="+tokenIn+"&to="+tokenOut;
-  window.open(url, "_blank");
+
+  if (!currentQuote) {
+    // Fallback to Aerodrome
+    window.open("https://aerodrome.finance/swap?from="+tokenIn+"&to="+tokenOut, "_blank");
+    return;
+  }
+
+  var btn = document.getElementById("swapBtn");
+  btn.disabled = true;
+  btn.textContent = "Getting quote...";
+
+  var decimals = TOKEN_DECIMALS[tokenIn] || 18;
+  var sellAmount = Math.floor(amtIn * Math.pow(10, decimals)).toString();
+  var sellToken = TOKEN_ADDRS[tokenIn];
+  var buyToken = TOKEN_ADDRS[tokenOut];
+
+  // Get full quote with transaction data
+  var url = "https://api.0x.org/swap/permit2/quote" +
+    "?chainId=8453" +
+    "&sellToken=" + sellToken +
+    "&buyToken=" + buyToken +
+    "&sellAmount=" + sellAmount +
+    "&affiliateAddress=" + AFFILIATE_WALLET +
+    "&affiliateFee=" + AFFILIATE_FEE +
+    "&taker=" + window._walletAddr;
+
+  try {
+    var res = await fetch(url, {
+      headers: {"0x-api-key":"2a71d5e4-f7cc-4345-be30-72b8400cc5b2","0x-version":"v2"}
+    });
+    var quote = await res.json();
+
+    if (quote.transaction) {
+      var tx = quote.transaction;
+      // Append Builder Code to transaction data for Base attribution
+      var txData = tx.data;
+      if (typeof BUILDER_CODE_HEX !== "undefined") {
+        txData = txData + BUILDER_CODE_HEX.slice(2);
+      }
+      var txHash = await window.ethereum.request({
+        method: "eth_sendTransaction",
+        params: [{
+          from: window._walletAddr,
+          to: tx.to,
+          data: txData,
+          value: "0x" + parseInt(tx.value||"0").toString(16),
+          gas: "0x" + Math.floor(parseInt(tx.gas||"200000") * 1.2).toString(16)
+        }]
+      });
+      btn.textContent = "Swap sent! ✅";
+      var info = document.getElementById("swapInfo");
+      info.innerHTML = "Transaction sent! <a href='https://basescan.org/tx/"+txHash+"' target='_blank' style='color:#4d8bff'>View on BaseScan →</a>";
+      setTimeout(function() {
+        btn.disabled = false;
+        btn.textContent = "Swap "+tokenIn+" → "+tokenOut;
+      }, 5000);
+    } else {
+      throw new Error("No transaction data");
+    }
+  } catch(e) {
+    console.error("Swap error:", e);
+    btn.disabled = false;
+    btn.textContent = "Swap " + tokenIn + " → " + tokenOut;
+    // Fallback
+    window.open("https://aerodrome.finance/swap?from="+tokenIn+"&to="+tokenOut, "_blank");
+  }
 }
 
 // ---- TOP POOLS ----
@@ -1283,6 +1419,8 @@ window.addEventListener("load", function() {
   renderAlerts();
   createManifest();
   if("Notification"in window&&Notification.permission==="default")Notification.requestPermission();
+  // Log builder code visit for Base attribution
+  console.log("Base DeFi Dashboard | Builder:", BUILDER_CODE);
 });
 </script>
 </body>
