@@ -897,9 +897,8 @@ function fpools(proj, usdc) {
   });
 }
 function fetchWithProxy(url) {
-  // Use Vercel proxy for DeFiLlama
-  var path = url.replace("https://yields.llama.fi", "/api").replace("https://api.llama.fi/v2", "/api");
-  return fetch(path).then(function(r) { return r.json(); });
+  return fetch("/api/proxy?url=" + encodeURIComponent(url))
+    .then(function(r) { return r.json(); });
 }
 
 function fchart(id) {
