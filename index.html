@@ -888,7 +888,7 @@ function setCard(k, data, fa, fb) {
 }
 
 function fpools(proj, usdc) {
-  return fetch("/api/pools").then(function(j){
+  return fetch("/api/proxy?url=https%3A%2F%2Fyields.llama.fi%2Fpools").then(function(j){
     var ps = j.data.filter(function(p){ return p.project===proj && p.chain==="Base" && (p.tvlUsd||0)>100000 && (p.apy||0)>0; });
     if (usdc) ps = ps.filter(function(p){return (p.symbol||"").toUpperCase().includes("USDC");});
     ps.sort(function(a,b){return (b.apy||0)-(a.apy||0);});
@@ -902,7 +902,7 @@ function fetchWithProxy(url) {
 }
 
 function fchart(id) {
-  return fetch("/api/chart/"+id).then(function(j){
+  return fetch("/api/proxy?url="+encodeURIComponent("https://yields.llama.fi/chart/")+id).then(function(j){
     var l=j.data[j.data.length-1]; return {apy:l.apy,tvlUsd:l.tvlUsd};
   });
 }
@@ -976,7 +976,7 @@ function fetchNews() {
 setInterval(fetchNews, 5 * 60 * 1000);
 
 function fetchBaseTVL() {
-  fetch("/api/chains").then(function(data){
+  fetch("/api/proxy?url=https%3A%2F%2Fapi.llama.fi%2Fv2%2Fchains").then(function(data){
     var base = data.find(function(c){return c.name==="Base";});
     if (base) {
       var tvl = base.tvl;
@@ -1302,7 +1302,7 @@ async function executeSwap() {
 // ---- TOP POOLS ----
 var allPools = [];
 function fetchTopPools() {
-  fetch("/api/pools").then(function(j){
+  fetch("/api/proxy?url=https%3A%2F%2Fyields.llama.fi%2Fpools").then(function(j){
     allPools = j.data.filter(function(p){ return p.chain==="Base"&&(p.tvlUsd||0)>500000&&(p.apy||0)>0&&(p.apy||0)<500; }).sort(function(a,b){return (b.apy||0)-(a.apy||0);});
     renderTopPools();
   }).catch(function(){ document.getElementById("topPoolsContainer").innerHTML="<div class='pools-loading'>Could not load pools</div>"; });
