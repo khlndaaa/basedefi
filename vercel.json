@@ -1,16 +1,7 @@
 {
-  "rewrites": [
-    {
-      "source": "/api/pools",
-      "destination": "https://yields.llama.fi/pools"
-    },
-    {
-      "source": "/api/chart/:id",
-      "destination": "https://yields.llama.fi/chart/:id"
-    },
-    {
-      "source": "/api/chains",
-      "destination": "https://api.llama.fi/v2/chains"
+  "functions": {
+    "api/proxy.js": {
+      "maxDuration": 30
     }
-  ]
+  }
 }
